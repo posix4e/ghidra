@@ -111,7 +111,7 @@ docker run --rm \
 	--volume "${SCRIPT_DIR}/scripts:/work/scripts:ro" \
 	--volume "${OUTPUT_ABS}:/work/out" \
 	"${IMAGE_TAG}" \
-	/home/ghidra/proj llmproj \
+	/home/ghidra llmproj \
 	-import "/work/input/${BINARY_NAME}" \
 	-scriptPath /work/scripts \
 	-postScript ExportProgramForLLM.java ${POST_ARGS} \

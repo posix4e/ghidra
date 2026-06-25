@@ -109,9 +109,15 @@ deleted afterward (`-deleteProject`); only the exported text files persist on th
 
 ## Verifying without Docker (optional)
 
-After `./gradlew buildGhidra` you can run the export script directly to sanity-check it:
+After `./gradlew buildGhidra` you can run the export script directly to sanity-check it.
+Note: the Ghidra project-location directory (first positional arg) must already exist, and
+decompilation requires the native decompiler (`os/<platform>/decompile`) — if you see
+"Could not find decompiler executable", build it with
+`./gradlew :Decompiler:decompileLinux_x86_64Executable` (needs `flex` + `bison`) and copy it
+into `build/dist/ghidra_*/Ghidra/Features/Decompiler/os/linux_x86_64/`.
 
 ```bash
+mkdir -p /tmp/p /tmp/out
 build/dist/ghidra_*/support/analyzeHeadless /tmp/p t \
   -import /bin/ls \
   -scriptPath ghidra-llm/scripts \
