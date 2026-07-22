@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interval Timer</title>
+<style>
+  :root {
+    --work: #e6394b;
+    --rest: #2a9d8f;
+    --prep: #f4a261;
+    --done: #6d6875;
+    --bg: #14171c;
+    --panel: #1e232b;
+    --text: #f2f4f8;
+    --muted: #9aa4b2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 16px;
+    transition: background 0.4s ease;
+  }
+  body.state-work   { background: #2a0e12; }
+  body.state-rest   { background: #0d2420; }
+  body.state-prep   { background: #2a1f0d; }
+  body.state-done   { background: #1a1720; }
+
+  .app {
+    width: 100%;
+    max-width: 460px;
+    text-align: center;
+  }
+
+  .phase {
+    font-size: clamp(1.6rem, 8vw, 2.6rem);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .state-work .phase  { color: var(--work); }
+  .state-rest .phase  { color: var(--rest); }
+  .state-prep .phase  { color: var(--prep); }
+  .state-done .phase  { color: var(--done); }
+
+  .round {
+    font-size: 1rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+
+  .clock {
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    font-size: clamp(4.5rem, 26vw, 8.5rem);
+    line-height: 1;
+    margin: 6px 0 20px;
+  }
+
+  .ring-wrap { position: relative; width: min(70vw, 260px); margin: 0 auto 26px; aspect-ratio: 1; }
+  svg.ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring-bg { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 10; }
+  .ring-fg { fill: none; stroke-width: 10; stroke-linecap: round; transition: stroke 0.4s ease; }
+  .state-work .ring-fg { stroke: var(--work); }
+  .state-rest .ring-fg { stroke: var(--rest); }
+  .state-prep .ring-fg { stroke: var(--prep); }
+  .state-done .ring-fg { stroke: var(--done); }
+  .ring-center {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .ring-center .clock { margin: 0; font-size: clamp(3rem, 16vw, 5rem); }
+  .ring-center .sub { font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-top: 6px; }
+
+  .controls { display: flex; gap: 12px; justify-content: center; margin-bottom: 22px; }
+  button {
+    font: inherit;
+    font-weight: 700;
+    border: none;
+    border-radius: 12px;
+    padding: 14px 28px;
+    cursor: pointer;
+    color: #fff;
+    background: #3a4150;
+    transition: transform 0.05s ease, background 0.2s ease;
+    min-width: 110px;
+  }
+  button:active { transform: scale(0.96); }
+  button.primary { background: #4361ee; }
+  button.primary:hover { background: #3651d8; }
+  button:hover { background: #454d5e; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .settings {
+    background: var(--panel);
+    border-radius: 14px;
+    padding: 18px;
+    text-align: left;
+  }
+  .settings h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 14px; }
+  .field { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { font-size: 0.95rem; }
+  .field input {
+    width: 84px;
+    font: inherit;
+    text-align: center;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #333c48;
+    background: #12161c;
+    color: var(--text);
+  }
+  .field input:focus { outline: 2px solid #4361ee; border-color: transparent; }
+  .total { font-size: 0.85rem; color: var(--muted); margin-top: 14px; text-align: center; }
+  .hint { font-size: 0.75rem; color: var(--muted); margin-top: 16px; text-align: center; }
+</style>
+</head>
+<body class="state-idle">
+  <div class="app">
+    <div class="phase" id="phase">Ready</div>
+    <div class="round" id="round">8 rounds &middot; 3:00 work &middot; 1:00 rest</div>
+
+    <div class="ring-wrap">
+      <svg class="ring" viewBox="0 0 120 120">
+        <circle class="ring-bg" cx="60" cy="60" r="54"></circle>
+        <circle class="ring-fg" id="ring" cx="60" cy="60" r="54"
+                stroke-dasharray="339.29" stroke-dashoffset="0"></circle>
+      </svg>
+      <div class="ring-center">
+        <div class="clock" id="clock">00:00</div>
+        <div class="sub" id="sub">Press start</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="primary" id="startBtn">Start</button>
+      <button id="resetBtn">Reset</button>
+    </div>
+
+    <div class="settings">
+      <h2>Configuration</h2>
+      <div class="field">
+        <label for="rounds">Rounds</label>
+        <input type="number" id="rounds" min="1" max="99" value="8">
+      </div>
+      <div class="field">
+        <label for="work">Work (seconds)</label>
+        <input type="number" id="work" min="1" max="3600" value="180">
+      </div>
+      <div class="field">
+        <label for="rest">Rest (seconds)</label>
+        <input type="number" id="rest" min="0" max="3600" value="60">
+      </div>
+      <div class="field">
+        <label for="prep">Prep countdown (seconds)</label>
+        <input type="number" id="prep" min="0" max="60" value="10">
+      </div>
+      <div class="total" id="total"></div>
+    </div>
+
+    <div class="hint">Tip: press <strong>Space</strong> to start/pause &middot; <strong>R</strong> to reset. Keep this tab open while training.</div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  const els = {
+    body: document.body,
+    phase: document.getElementById("phase"),
+    round: document.getElementById("round"),
+    clock: document.getElementById("clock"),
+    sub: document.getElementById("sub"),
+    ring: document.getElementById("ring"),
+    startBtn: document.getElementById("startBtn"),
+    resetBtn: document.getElementById("resetBtn"),
+    rounds: document.getElementById("rounds"),
+    work: document.getElementById("work"),
+    rest: document.getElementById("rest"),
+    prep: document.getElementById("prep"),
+    total: document.getElementById("total"),
+  };
+
+  const RING_LEN = 2 * Math.PI * 54; // ~339.29
+
+  let plan = [];        // sequence of phases {type, label, dur}
+  let index = 0;        // current phase index
+  let remaining = 0;    // seconds left in current phase
+  let phaseDur = 0;     // duration of current phase
+  let running = false;
+  let ticker = null;
+  let lastTick = 0;
+
+  // ----- Audio (Web Audio API, no external files) -----
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  }
+  function beep(freq, dur, when, vol) {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime + (when || 0);
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(vol || 0.3, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+  function cueShort() { beep(880, 0.15, 0); }              // countdown tick
+  function cueWork()  { beep(660, 0.18, 0); beep(990, 0.25, 0.2); } // start work
+  function cueRest()  { beep(520, 0.3, 0); }               // start rest
+  function cueDone()  { beep(700, 0.2, 0); beep(900, 0.2, 0.25); beep(1200, 0.4, 0.5); }
+
+  // ----- Helpers -----
+  function fmt(sec) {
+    sec = Math.max(0, Math.ceil(sec));
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+
+  function buildPlan() {
+    const rounds = clampInt(els.rounds.value, 1, 99, 8);
+    const work = clampInt(els.work.value, 1, 3600, 180);
+    const rest = clampInt(els.rest.value, 0, 3600, 60);
+    const prep = clampInt(els.prep.value, 0, 60, 10);
+
+    const seq = [];
+    if (prep > 0) seq.push({ type: "prep", label: "Get Ready", dur: prep });
+    for (let r = 1; r <= rounds; r++) {
+      seq.push({ type: "work", label: "Work", dur: work, round: r, rounds: rounds });
+      if (rest > 0 && r < rounds) {
+        seq.push({ type: "rest", label: "Rest", dur: rest, round: r, rounds: rounds });
+      }
+    }
+    return seq;
+  }
+
+  function clampInt(v, lo, hi, dflt) {
+    let n = parseInt(v, 10);
+    if (isNaN(n)) n = dflt;
+    return Math.min(hi, Math.max(lo, n));
+  }
+
+  function updateSummary() {
+    const rounds = clampInt(els.rounds.value, 1, 99, 8);
+    const work = clampInt(els.work.value, 1, 3600, 180);
+    const rest = clampInt(els.rest.value, 0, 3600, 60);
+    const prep = clampInt(els.prep.value, 0, 60, 10);
+    const totalSec = prep + rounds * work + Math.max(0, rounds - 1) * rest;
+    els.total.textContent = "Total workout: " + fmt(totalSec) + " (" + rounds + " rounds)";
+    if (!running && index === 0 && plan.length === 0) {
+      els.round.innerHTML = rounds + " rounds &middot; " + fmt(work) + " work &middot; " + fmt(rest) + " rest";
+    }
+  }
+
+  function setBodyState(type) {
+    els.body.className = "state-" + type;
+  }
+
+  function render() {
+    const cur = plan[index];
+    if (!cur) return;
+    els.phase.textContent = cur.label;
+    els.clock.textContent = fmt(remaining);
+    setBodyState(cur.type);
+
+    if (cur.type === "prep") {
+      els.round.textContent = "Starting soon";
+      els.sub.textContent = "Get ready";
+    } else {
+      els.round.innerHTML = "Round " + cur.round + " / " + cur.rounds;
+      els.sub.textContent = cur.type === "work" ? "Push!" : "Recover";
+    }
+
+    const frac = phaseDur > 0 ? remaining / phaseDur : 0;
+    els.ring.style.strokeDashoffset = String(RING_LEN * (1 - frac));
+  }
+
+  function enterPhase(i) {
+    index = i;
+    const cur = plan[index];
+    phaseDur = cur.dur;
+    remaining = cur.dur;
+    if (cur.type === "work") cueWork();
+    else if (cur.type === "rest") cueRest();
+    render();
+  }
+
+  function tick(now) {
+    if (!running) return;
+    const dt = (now - lastTick) / 1000;
+    lastTick = now;
+
+    const prev = remaining;
+    remaining -= dt;
+
+    // countdown beeps at 3,2,1 seconds left
+    const prevCeil = Math.ceil(prev);
+    const curCeil = Math.ceil(remaining);
+    if (curCeil !== prevCeil && curCeil >= 1 && curCeil <= 3) {
+      cueShort();
+    }
+
+    if (remaining <= 0) {
+      if (index + 1 < plan.length) {
+        enterPhase(index + 1);
+      } else {
+        finish();
+        return;
+      }
+    } else {
+      render();
+    }
+    ticker = requestAnimationFrame(tick);
+  }
+
+  function finish() {
+    running = false;
+    cancelAnimationFrame(ticker);
+    setBodyState("done");
+    els.phase.textContent = "Done!";
+    els.round.textContent = "Great work \u{1F4AA}";
+    els.clock.textContent = "00:00";
+    els.sub.textContent = "Complete";
+    els.ring.style.strokeDashoffset = "0";
+    els.startBtn.textContent = "Start";
+    els.startBtn.classList.add("primary");
+    cueDone();
+    plan = [];
+    index = 0;
+  }
+
+  function start() {
+    ensureAudio();
+    if (plan.length === 0) {
+      plan = buildPlan();
+      enterPhase(0);
+    }
+    running = true;
+    lastTick = performance.now();
+    els.startBtn.textContent = "Pause";
+    els.startBtn.classList.remove("primary");
+    setInputsDisabled(true);
+    ticker = requestAnimationFrame(tick);
+  }
+
+  function pause() {
+    running = false;
+    cancelAnimationFrame(ticker);
+    els.startBtn.textContent = "Resume";
+    els.startBtn.classList.add("primary");
+    els.sub.textContent = "Paused";
+  }
+
+  function reset() {
+    running = false;
+    cancelAnimationFrame(ticker);
+    plan = [];
+    index = 0;
+    remaining = 0;
+    phaseDur = 0;
+    setBodyState("idle");
+    els.phase.textContent = "Ready";
+    els.clock.textContent = "00:00";
+    els.sub.textContent = "Press start";
+    els.ring.style.strokeDashoffset = "0";
+    els.startBtn.textContent = "Start";
+    els.startBtn.classList.add("primary");
+    setInputsDisabled(false);
+    updateSummary();
+  }
+
+  function setInputsDisabled(d) {
+    [els.rounds, els.work, els.rest, els.prep].forEach(function (el) { el.disabled = d; });
+  }
+
+  function toggle() {
+    if (running) pause();
+    else start();
+  }
+
+  // ----- Events -----
+  els.startBtn.addEventListener("click", toggle);
+  els.resetBtn.addEventListener("click", reset);
+  [els.rounds, els.work, els.rest, els.prep].forEach(function (el) {
+    el.addEventListener("input", updateSummary);
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.target.tagName === "INPUT") return;
+    if (e.code === "Space") { e.preventDefault(); toggle(); }
+    else if (e.key === "r" || e.key === "R") { reset(); }
+  });
+
+  els.ring.setAttribute("stroke-dasharray", String(RING_LEN));
+  updateSummary();
+})();
+</script>
+</body>
+</html>
