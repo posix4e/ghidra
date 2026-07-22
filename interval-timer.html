@@ -225,10 +225,33 @@
     osc.start(t);
     osc.stop(t + dur + 0.02);
   }
-  function cueShort() { beep(880, 0.15, 0); }              // countdown tick
-  function cueWork()  { beep(660, 0.18, 0); beep(990, 0.25, 0.2); } // start work
-  function cueRest()  { beep(520, 0.3, 0); }               // start rest
-  function cueDone()  { beep(700, 0.2, 0); beep(900, 0.2, 0.25); beep(1200, 0.4, 0.5); }
+  // A louder square-wave alarm burst: several fast pulses, repeated as a pattern.
+  function alarm(freq, pulses, gap, when, vol) {
+    if (!audioCtx) return;
+    const base = audioCtx.currentTime + (when || 0);
+    for (let i = 0; i < pulses; i++) {
+      const t = base + i * gap;
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = "square";
+      osc.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol || 0.5, t + 0.008);
+      g.gain.setValueAtTime(vol || 0.5, t + gap * 0.55);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + gap * 0.9);
+      osc.connect(g).connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + gap);
+    }
+  }
+
+  function cueShort() { beep(880, 0.15, 0, 0.35); }        // countdown tick (3-2-1)
+  // Alarm at the START of a work round: urgent high buzzer.
+  function cueWork()  { alarm(1000, 4, 0.16, 0, 0.55); }
+  // Alarm at the START of a rest period: lower, calmer double buzz.
+  function cueRest()  { alarm(600, 2, 0.28, 0, 0.5); }
+  // Finish fanfare: rising alarm sweep.
+  function cueDone()  { alarm(700, 3, 0.18, 0, 0.5); alarm(1100, 4, 0.16, 0.6, 0.55); }
 
   // ----- Helpers -----
   function fmt(sec) {
