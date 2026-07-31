@@ -51,6 +51,7 @@ scsv-asset = { path = "crates/scsv-asset" }
 scsv-wallet = { path = "crates/scsv-wallet" }
 scsv-transport = { path = "crates/scsv-transport" }
 scsv-testkit = { path = "crates/scsv-testkit" }
+scsv-demos = { path = "crates/scsv-demos" }
 
 # dev
 proptest = "=1.5.0"
