@@ -4,4 +4,9 @@
 //!
 //! See `spec/06-NULLIFIERS.md`.
 
-// Implemented in M2.
+pub mod bip340;
+
+pub use bip340::{
+    bip340_verify, nullifier_message, s2c_sign, s2c_verify, tagged_hash, NullifierKeypair,
+    NullifierSig, S2cOpening, XOnlyBytes,
+};

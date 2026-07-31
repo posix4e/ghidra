@@ -6,6 +6,12 @@
 //! and tree semantics defined here so that native and in-circuit computations
 //! agree bit-for-bit. See `spec/01-CRYPTO.md`.
 
+pub mod codec;
 pub mod field;
+pub mod hash;
+pub mod imt;
+pub mod types;
 
 pub use field::F;
+pub use hash::{Digest, Domain};
+pub use types::{AccountState, ChainLoc, Coin, Genesis, Policy, TxHash, XOnlyBytes};
