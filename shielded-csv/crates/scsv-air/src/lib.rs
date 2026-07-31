@@ -37,6 +37,8 @@
 
 pub mod config;
 pub mod pis;
+pub mod poseidon2_air;
+pub mod poseidon2_native;
 pub mod transfer;
 pub mod transfer_air;
 
