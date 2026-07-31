@@ -44,8 +44,12 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Rust 1.94.1 is pinned by `rust-toolchain.toml`. Signal transport additionally
-needs `ci/install-signal-cli.sh` and a registered Signal account (arrives in
-M9; see `spec/20-TRANSPORT.md`).
+needs `ci/install-signal-cli.sh` (pinned + checksum-verified; fails closed
+without a pinned hash) and an operator-registered Signal account — registration
+needs a real phone number and cannot run in CI, so live Signal send/receive is
+gated on `SCSV_SIGNAL_RPC` / `SCSV_SIGNAL_ACCOUNT`. The transport-independent
+primitive underneath — a coin bundle as a `.scvb` file — needs none of that and
+is covered by the test suite. See `spec/20-TRANSPORT.md`.
 
 ## 2. Check
 
@@ -60,12 +64,31 @@ skip.
 ## 3. Demo
 
 ```sh
-cargo run -p scsv-cli -- demo tether   # from M8: full stablecoin lifecycle on live regtest
+cargo run -p scsv-cli -- demo tether   # full stablecoin lifecycle on live regtest
+```
+
+It spawns a throwaway regtest node and runs the whole lifecycle — public genesis
+→ mints → audit == mints → shielded A→B→C → provable burn → freeze → blocked
+spend → seize with evidence → replacement mint → a reconciling audit — printing
+the audited timeline and the private balances.
+
+## 4. Other `scsv` commands
+
+```sh
+# audit every asset on a node you already run (from the chain alone)
+scsv audit --rpc http://127.0.0.1:18443 --cookie ~/.bitcoin/regtest/.cookie
+
+# move a payment over Signal (needs a running signal-cli daemon; see step 1)
+scsv signal send --to +15551234567 --bundle payment.scvb
+scsv signal listen --out-dir ./inbox
 ```
 
 ## Status
 
-Research software, unaudited, protocol version 1 under active construction.
-Build order and per-milestone verification: M1 scaffold → M2 primitives → M3
-chain → M4 AIR → M5 issuance → M6 freeze+seizure → M7 wallet → M8 demos → M9
-Signal. Known-deferred items live in `spec/99-OPEN-PROBLEMS.md`.
+Research software, unaudited, protocol version 1. Build order and per-milestone
+verification: M1 scaffold → M2 primitives → M3 chain → M4 AIR → M5 issuance →
+M6 freeze+seizure → M7 wallet+CLI → M8 demos → M9 Signal transport. All
+milestones are implemented and tested against real regtest nodes with real
+full-parameter proofs; live Signal send/receive is the one path gated on an
+operator-registered account (its wire format and the file primitive are tested
+without a daemon). Known-deferred items live in `spec/99-OPEN-PROBLEMS.md`.

@@ -20,6 +20,7 @@ use scsv_asset::evidence::NoEvidence;
 use scsv_asset::{audit_supply, AssetReport};
 use scsv_chain::rpc::Auth;
 use scsv_chain::{BitcoindChain, PublicationChain};
+use scsv_transport::{import_bundle, SignalConfig, SignalTransport};
 
 /// Node-carrier size the regtest harness pins; also the default assumed for a
 /// user-run node in `audit`/`node-info` (only the publish path enforces it).
@@ -62,6 +63,43 @@ enum Command {
         cookie: PathBuf,
         #[arg(long, default_value = "")]
         wallet: String,
+    },
+    /// Move coin bundles over Signal (via a running signal-cli daemon).
+    Signal {
+        #[command(subcommand)]
+        which: SignalCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum SignalCmd {
+    /// Send a bundle file to a recipient.
+    Send {
+        /// Recipient E.164 number, e.g. +15551234567.
+        #[arg(long)]
+        to: String,
+        /// Path to the `.scvb` bundle to send.
+        #[arg(long)]
+        bundle: PathBuf,
+        /// signal-cli daemon JSON-RPC URL (or env SCSV_SIGNAL_RPC).
+        #[arg(long, env = "SCSV_SIGNAL_RPC")]
+        rpc: String,
+        /// This wallet's registered Signal account (or env SCSV_SIGNAL_ACCOUNT).
+        #[arg(long, env = "SCSV_SIGNAL_ACCOUNT")]
+        account: String,
+    },
+    /// Poll for incoming bundles and write each to `<out-dir>/<from>-<n>.scvb`.
+    Listen {
+        /// Directory to write received bundles into.
+        #[arg(long, default_value = ".")]
+        out_dir: PathBuf,
+        /// Seconds to wait for traffic per poll.
+        #[arg(long, default_value_t = 10)]
+        timeout: u64,
+        #[arg(long, env = "SCSV_SIGNAL_RPC")]
+        rpc: String,
+        #[arg(long, env = "SCSV_SIGNAL_ACCOUNT")]
+        account: String,
     },
 }
 
@@ -109,7 +147,52 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("tip height {height}, hash {}", hex::encode(hash));
             Ok(())
         }
+        Command::Signal { which } => signal(which),
     }
+}
+
+fn signal(cmd: SignalCmd) -> Result<(), Box<dyn std::error::Error>> {
+    match cmd {
+        SignalCmd::Send {
+            to,
+            bundle,
+            rpc,
+            account,
+        } => {
+            let b = import_bundle(&bundle)?;
+            let transport = SignalTransport::new(SignalConfig::new(rpc, account));
+            transport.send_bundle(&to, &b)?;
+            println!("sent {} to {to}", bundle.display());
+            Ok(())
+        }
+        SignalCmd::Listen {
+            out_dir,
+            timeout,
+            rpc,
+            account,
+        } => {
+            let transport = SignalTransport::new(SignalConfig::new(rpc, account));
+            std::fs::create_dir_all(&out_dir)?;
+            eprintln!("listening for bundles (Ctrl-C to stop)…");
+            let mut n = 0u64;
+            loop {
+                let received = transport.receive_bundles(timeout)?;
+                for rb in received {
+                    let path = out_dir.join(format!("{}-{n}.scvb", sanitize(&rb.from)));
+                    std::fs::write(&path, rb.bundle.to_bytes())?;
+                    println!("received bundle from {} -> {}", rb.from, path.display());
+                    n += 1;
+                }
+            }
+        }
+    }
+}
+
+/// Make a sender identifier safe for a filename.
+fn sanitize(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
 }
 
 fn demo_tether() -> Result<(), Box<dyn std::error::Error>> {
