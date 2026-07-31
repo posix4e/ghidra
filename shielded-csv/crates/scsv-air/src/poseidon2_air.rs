@@ -132,83 +132,87 @@ impl BaseAir<F> for Poseidon2Air {
     }
 }
 
+/// Assert the full round chain for the permutation described by `cols`, from its
+/// `input` columns to its final state, and return that final state (16 exprs).
+/// Shared by `Poseidon2Air` and any AIR that embeds a permutation per row (e.g.
+/// the Merkle-opening AIR). The `input` columns are treated as given — callers
+/// that need to constrain them (Merkle routing) do so separately.
+pub fn constrain_perm<AB: AirBuilder<F = F>>(
+    builder: &mut AB,
+    cols: &PermCols<AB::Var>,
+) -> [AB::Expr; WIDTH] {
+    let diag_f = internal_diag();
+    let diag: [AB::Expr; WIDTH] = core::array::from_fn(|i| AB::Expr::from(diag_f[i]));
+    let var = |v: AB::Var| -> AB::Expr { v.into() };
+
+    let input: [AB::Expr; WIDTH] = core::array::from_fn(|i| var(cols.input[i]));
+    let init_lin = external_linear(&input);
+    for (got, want) in init_lin.iter().zip(cols.after_init_linear.iter()) {
+        builder.assert_eq(got.clone(), var(*want));
+    }
+
+    let assert_external = |builder: &mut AB,
+                           a: &[AB::Expr; WIDTH],
+                           rc: &[F; WIDTH],
+                           x3: &[AB::Var; WIDTH],
+                           out: &[AB::Var; WIDTH]| {
+        let mut x7: [AB::Expr; WIDTH] = core::array::from_fn(|_| AB::Expr::ZERO);
+        for (i, x7i) in x7.iter_mut().enumerate() {
+            let t = a[i].clone() + AB::Expr::from(rc[i]);
+            builder.assert_eq(var(x3[i]), t.clone() * t.clone() * t.clone());
+            *x7i = var(x3[i]) * var(x3[i]) * t;
+        }
+        let lin = external_linear(&x7);
+        for (got, want) in lin.iter().zip(out.iter()) {
+            builder.assert_eq(got.clone(), var(*want));
+        }
+    };
+
+    let mut a: [AB::Expr; WIDTH] = core::array::from_fn(|i| var(cols.after_init_linear[i]));
+    for (rc, (x3, out)) in BABYBEAR_POSEIDON2_RC_16_EXTERNAL_INITIAL
+        .iter()
+        .zip(cols.ext_init_x3.iter().zip(cols.ext_init_out.iter()))
+    {
+        assert_external(builder, &a, rc, x3, out);
+        a = core::array::from_fn(|i| var(out[i]));
+    }
+
+    for (rc, (x3_col, out)) in BABYBEAR_POSEIDON2_RC_16_INTERNAL
+        .iter()
+        .zip(cols.int_x3.iter().zip(cols.int_out.iter()))
+    {
+        let t = a[0].clone() + AB::Expr::from(*rc);
+        builder.assert_eq(var(*x3_col), t.clone() * t.clone() * t.clone());
+        let x7_0 = var(*x3_col) * var(*x3_col) * t;
+        let post_sbox: [AB::Expr; WIDTH] =
+            core::array::from_fn(|i| if i == 0 { x7_0.clone() } else { a[i].clone() });
+        let lin = internal_linear(&post_sbox, &diag);
+        for (got, want) in lin.iter().zip(out.iter()) {
+            builder.assert_eq(got.clone(), var(*want));
+        }
+        a = core::array::from_fn(|i| var(out[i]));
+    }
+
+    for (rc, (x3, out)) in BABYBEAR_POSEIDON2_RC_16_EXTERNAL_FINAL
+        .iter()
+        .zip(cols.ext_final_x3.iter().zip(cols.ext_final_out.iter()))
+    {
+        assert_external(builder, &a, rc, x3, out);
+        a = core::array::from_fn(|i| var(out[i]));
+    }
+    a
+}
+
 impl<AB: AirBuilder<F = F>> Air<AB> for Poseidon2Air {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let row = main.current_slice();
         let cols: &PermCols<AB::Var> = row.borrow();
 
-        let diag_f = internal_diag();
-        let diag: [AB::Expr; WIDTH] = core::array::from_fn(|i| AB::Expr::from(diag_f[i]));
-
-        let var = |v: AB::Var| -> AB::Expr { v.into() };
-
-        // Initial external linear layer.
-        let input: [AB::Expr; WIDTH] = core::array::from_fn(|i| var(cols.input[i]));
-        let init_lin = external_linear(&input);
-        for (got, want) in init_lin.iter().zip(cols.after_init_linear.iter()) {
-            builder.assert_eq(got.clone(), var(*want));
-        }
-
-        // A helper closure to constrain one external round.
-        let assert_external = |builder: &mut AB,
-                               a: &[AB::Expr; WIDTH],
-                               rc: &[F; WIDTH],
-                               x3: &[AB::Var; WIDTH],
-                               out: &[AB::Var; WIDTH]| {
-            let mut x7: [AB::Expr; WIDTH] = core::array::from_fn(|_| AB::Expr::ZERO);
-            for (i, x7i) in x7.iter_mut().enumerate() {
-                let t = a[i].clone() + AB::Expr::from(rc[i]);
-                // x3 == t^3
-                builder.assert_eq(var(x3[i]), t.clone() * t.clone() * t.clone());
-                // x7 = x3^2 · t
-                *x7i = var(x3[i]) * var(x3[i]) * t;
-            }
-            let lin = external_linear(&x7);
-            for (got, want) in lin.iter().zip(out.iter()) {
-                builder.assert_eq(got.clone(), var(*want));
-            }
-        };
-
-        // External initial rounds.
-        let mut a: [AB::Expr; WIDTH] = core::array::from_fn(|i| var(cols.after_init_linear[i]));
-        for (rc, (x3, out)) in BABYBEAR_POSEIDON2_RC_16_EXTERNAL_INITIAL
-            .iter()
-            .zip(cols.ext_init_x3.iter().zip(cols.ext_init_out.iter()))
-        {
-            assert_external(builder, &a, rc, x3, out);
-            a = core::array::from_fn(|i| var(out[i]));
-        }
-
-        // Internal rounds.
-        for (rc, (x3_col, out)) in BABYBEAR_POSEIDON2_RC_16_INTERNAL
-            .iter()
-            .zip(cols.int_x3.iter().zip(cols.int_out.iter()))
-        {
-            let t = a[0].clone() + AB::Expr::from(*rc);
-            builder.assert_eq(var(*x3_col), t.clone() * t.clone() * t.clone());
-            let x7_0 = var(*x3_col) * var(*x3_col) * t;
-            let post_sbox: [AB::Expr; WIDTH] =
-                core::array::from_fn(|i| if i == 0 { x7_0.clone() } else { a[i].clone() });
-            let lin = internal_linear(&post_sbox, &diag);
-            for (got, want) in lin.iter().zip(out.iter()) {
-                builder.assert_eq(got.clone(), var(*want));
-            }
-            a = core::array::from_fn(|i| var(out[i]));
-        }
-
-        // External final rounds.
-        for (rc, (x3, out)) in BABYBEAR_POSEIDON2_RC_16_EXTERNAL_FINAL
-            .iter()
-            .zip(cols.ext_final_x3.iter().zip(cols.ext_final_out.iter()))
-        {
-            assert_external(builder, &a, rc, x3, out);
-            a = core::array::from_fn(|i| var(out[i]));
-        }
+        let a = constrain_perm(builder, cols);
 
         // Output digest binding: the first 8 lanes of the final state equal the
-        // public digest. Copy the public values out first so the immutable
-        // borrow of `builder` ends before the mutable `assert_eq` calls.
+        // public digest.
         let digest_pis: [AB::Expr; DIGEST_LEN] = {
             let pis = builder.public_values();
             core::array::from_fn(|i| pis[i].into())

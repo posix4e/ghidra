@@ -36,6 +36,7 @@
 //!   rand_core 0.6. Distinct majors coexist deliberately.
 
 pub mod config;
+pub mod merkle_air;
 pub mod pis;
 pub mod poseidon2_air;
 pub mod poseidon2_native;
