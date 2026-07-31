@@ -36,6 +36,7 @@ sha2 = "=0.10.9"
 # I/O, serialization, CLI.
 serde = { version = "=1.0.219", features = ["derive"] }
 serde_json = "=1.0.140"
+postcard = { version = "=1.1.3", features = ["alloc"] }
 ureq = "=2.12.1"
 clap = { version = "=4.5.48", features = ["derive"] }
 hex = "=0.4.3"

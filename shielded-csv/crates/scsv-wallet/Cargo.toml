@@ -13,10 +13,14 @@ scsv-air.workspace = true
 scsv-chain.workspace = true
 scsv-asset.workspace = true
 scsv-native-crypto.workspace = true
+p3-field.workspace = true
+p3-uni-stark.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+postcard.workspace = true
 hex.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+scsv-testkit.workspace = true

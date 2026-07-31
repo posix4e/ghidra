@@ -7,4 +7,12 @@
 //! `spec/16-RECEIVER.md`. There is no seed-based recovery — the wallet directory
 //! is the only backup (`spec/19-WALLET.md`).
 
-// Implemented in M7 (with issuer/seizure pieces from M5/M6).
+pub mod account;
+pub mod hop;
+pub mod receive;
+pub mod wallet;
+
+pub use account::{Account, AddressSecret, ShareableAddress};
+pub use hop::{CoinBundle, Loc, WireCoin, WireHop, WireNullifier};
+pub use receive::{verify_bundle, RejectReason, VerifiedCoin};
+pub use wallet::{IssuerState, OwnedCoin, Wallet, WalletError};

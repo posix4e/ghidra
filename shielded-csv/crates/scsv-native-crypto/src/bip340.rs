@@ -87,6 +87,19 @@ pub struct NullifierKeypair {
 }
 
 impl NullifierKeypair {
+    /// Deterministically derive a nullifier keypair from an account secret and
+    /// a 32-byte context (in the v1 wallet, a fresh address's randomness). Each
+    /// address thus has its own nullifier key, committed into the coin sent
+    /// there, so spending that coin twice yields the same nullifier public key —
+    /// which the chain's first-occurrence rule rejects. This is the per-coin
+    /// double-spend prevention of the v1 wallet (`spec/06-NULLIFIERS.md`,
+    /// simplification documented in `spec/19-WALLET.md`).
+    pub fn derive(account_sk: &[u8; 32], context: &[u8; 32]) -> Self {
+        let seed = tagged_hash("SCSV/coin-nullifier/v1", &[account_sk, context]);
+        // from_seed only fails on the zero scalar (negligible for a hash output).
+        Self::from_seed(&seed).expect("nonzero derived nullifier scalar")
+    }
+
     /// Derive a keypair from 32 seed bytes (reduced mod n; the caller supplies
     /// OS randomness — this crate stays deterministic).
     pub fn from_seed(seed: &[u8; 32]) -> Result<Self, CryptoError> {
