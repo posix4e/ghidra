@@ -7,6 +7,21 @@
 //! There is exactly one proof profile (real FRI parameters) — no reduced
 //! "test" parameters exist anywhere.
 //!
+//! # Current circuit depth (M4)
+//!
+//! The proving backend is complete and real: [`config::config`] builds the one
+//! full-parameter STARK config, and [`transfer`] proves a transfer's
+//! **value-conservation and range** constraints (spec/14 groups 6 and 14)
+//! end-to-end at those parameters. That is the arithmetic core of a transfer,
+//! in zero knowledge, with negative tests per constraint family.
+//!
+//! The remaining constraint groups in spec/14 — the Poseidon2 permutation
+//! gadget and everything built on it (Merkle path consistency, the spent
+//! accumulator, nullifier-key derivation, state-commitment openings, record
+//! binding, freeze non-membership) — are the next increment. Until they are
+//! in-circuit, those bindings are enforced natively by the receiver (spec/16).
+//! This boundary is deliberate and documented; see `transfer_air`.
+//!
 //! # p3 0.6.3 audit (M1, 2026-07-31)
 //!
 //! - **Fiat–Shamir public-input binding**: `p3-uni-stark` 0.6.3 observes
@@ -20,4 +35,11 @@
 //! - **rand majors**: p3 resolves rand 0.10 / rand_core 0.10; k256 0.13 pulls
 //!   rand_core 0.6. Distinct majors coexist deliberately.
 
-// Implemented from M4 onward.
+pub mod config;
+pub mod pis;
+pub mod transfer;
+pub mod transfer_air;
+
+pub use config::{config, ScsvConfig};
+pub use pis::{HopPublicInputs, NUM_PIS};
+pub use transfer::{prove_transfer, verify_transfer, Slot, TransferPublic};

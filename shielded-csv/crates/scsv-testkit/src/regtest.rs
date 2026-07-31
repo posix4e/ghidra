@@ -77,16 +77,22 @@ impl RegtestNode {
         std::fs::create_dir_all(&datadir).map_err(|e| format!("create datadir: {e}"))?;
         let rpc_port = free_port();
 
+        // `listen=0` disables P2P entirely: tests are single-node, and without
+        // it every node would try to bind the one default regtest P2P port
+        // (18444) and all but the first would exit with status 1. `bind`ing the
+        // RPC to a unique port is enough.
         let conf = format!(
             "server=1\n\
              txindex=1\n\
+             listen=0\n\
              fallbackfee=0.0002\n\
              datacarrier=1\n\
              datacarriersize={DATACARRIER_SIZE}\n\
              [regtest]\n\
              rpcport={rpc_port}\n"
         );
-        std::fs::write(datadir.join("bitcoin.conf"), conf).map_err(|e| format!("write conf: {e}"))?;
+        std::fs::write(datadir.join("bitcoin.conf"), conf)
+            .map_err(|e| format!("write conf: {e}"))?;
 
         let mut child = Command::new(bitcoind_bin())
             .arg("-regtest")
@@ -110,7 +116,9 @@ impl RegtestNode {
             }
             if let Ok(Some(status)) = child.try_wait() {
                 let _ = std::fs::remove_dir_all(&datadir);
-                return Err(format!("bitcoind exited early ({status}) on port {rpc_port}"));
+                return Err(format!(
+                    "bitcoind exited early ({status}) on port {rpc_port}"
+                ));
             }
             if Instant::now() > deadline {
                 let _ = child.kill();
@@ -124,7 +132,13 @@ impl RegtestNode {
         let wallet_name = "scsv".to_string();
         node.call("createwallet", json!([wallet_name]))
             .map_err(|e| format!("createwallet: {e}"))?;
-        let n = RegtestNode { child, datadir, rpc_port, url, wallet_name };
+        let n = RegtestNode {
+            child,
+            datadir,
+            rpc_port,
+            url,
+            wallet_name,
+        };
         n.chain()
             .ensure_funds()
             .map_err(|e| format!("fund wallet: {e}"))?;
