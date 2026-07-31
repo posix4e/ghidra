@@ -1,5 +1,7 @@
 /target
 **/*.rs.bk
 *.pdb
+# Ghidra's root .gitignore has `*.lock`; our lockfile must be tracked.
+!Cargo.lock
 # local test scratch (real regtest datadirs are created under the OS temp dir)
 /scratch
