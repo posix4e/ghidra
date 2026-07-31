@@ -1,0 +1,5 @@
+/target
+**/*.rs.bk
+*.pdb
+# local test scratch (real regtest datadirs are created under the OS temp dir)
+/scratch

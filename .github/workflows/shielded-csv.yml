@@ -1,0 +1,43 @@
+name: shielded-csv
+
+on:
+  push:
+    branches: ["claude/shielded-csv-*"]
+    paths:
+      - "shielded-csv/**"
+      - ".github/workflows/shielded-csv.yml"
+  pull_request:
+    paths:
+      - "shielded-csv/**"
+      - ".github/workflows/shielded-csv.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: shielded-csv
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            shielded-csv/target
+          key: scsv-cargo-${{ runner.os }}-${{ hashFiles('shielded-csv/Cargo.lock') }}
+
+      - name: Cache bitcoind
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin
+          key: scsv-bitcoind-31.1-${{ runner.os }}
+
+      - name: Install pinned Bitcoin Core
+        run: bash ci/install-bitcoind.sh
+
+      - name: Check (fmt, clippy -D warnings, tests)
+        run: bash ci/check.sh

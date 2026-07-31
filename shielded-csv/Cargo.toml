@@ -1,0 +1,67 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/posix4e/ghidra"
+publish = false
+
+# All external versions are pinned exactly. First build downloads everything
+# (no local cargo cache in the dev environment), so the tree is kept modest and
+# Cargo.lock is committed.
+[workspace.dependencies]
+# Plonky3 (hand-written AIR STARKs) — pinned 0.6.3 across the board.
+p3-field = "=0.6.3"
+p3-baby-bear = "=0.6.3"
+p3-poseidon2 = "=0.6.3"
+p3-symmetric = "=0.6.3"
+p3-matrix = "=0.6.3"
+p3-air = "=0.6.3"
+p3-uni-stark = "=0.6.3"
+p3-commit = "=0.6.3"
+p3-challenger = "=0.6.3"
+p3-dft = "=0.6.3"
+p3-fri = "=0.6.3"
+p3-merkle-tree = "=0.6.3"
+p3-util = "=0.6.3"
+
+# Native crypto (out-of-circuit secp256k1 for on-chain nullifiers/records).
+k256 = { version = "=0.13.4", default-features = false, features = ["arithmetic", "schnorr"] }
+sha2 = "=0.10.9"
+
+# I/O, serialization, CLI.
+serde = { version = "=1.0.219", features = ["derive"] }
+serde_json = "=1.0.140"
+ureq = "=2.12.1"
+clap = { version = "=4.5.48", features = ["derive"] }
+hex = "=0.4.3"
+thiserror = "=2.0.12"
+
+# Internal crates.
+scsv-core = { path = "crates/scsv-core" }
+scsv-native-crypto = { path = "crates/scsv-native-crypto" }
+scsv-air = { path = "crates/scsv-air" }
+scsv-chain = { path = "crates/scsv-chain" }
+scsv-asset = { path = "crates/scsv-asset" }
+scsv-wallet = { path = "crates/scsv-wallet" }
+scsv-transport = { path = "crates/scsv-transport" }
+scsv-testkit = { path = "crates/scsv-testkit" }
+
+# dev
+proptest = "=1.5.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+
+# Proving is unusably slow in a pure debug build; give tests release-grade
+# arithmetic while keeping debug assertions on.
+[profile.test]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1

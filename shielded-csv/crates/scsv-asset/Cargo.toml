@@ -1,0 +1,17 @@
+[package]
+name = "scsv-asset"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+scsv-core.workspace = true
+scsv-chain.workspace = true
+scsv-native-crypto.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

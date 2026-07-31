@@ -1,0 +1,18 @@
+[package]
+name = "scsv-native-crypto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+scsv-core.workspace = true
+k256.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

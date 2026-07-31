@@ -1,0 +1,22 @@
+[package]
+name = "scsv-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "scsv"
+path = "src/main.rs"
+
+[dependencies]
+scsv-core.workspace = true
+scsv-chain.workspace = true
+scsv-asset.workspace = true
+scsv-wallet.workspace = true
+scsv-transport.workspace = true
+clap.workspace = true
+hex.workspace = true
+thiserror.workspace = true

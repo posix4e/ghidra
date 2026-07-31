@@ -1,0 +1,20 @@
+[package]
+name = "scsv-demos"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+scsv-core.workspace = true
+
+[dev-dependencies]
+scsv-air.workspace = true
+scsv-chain.workspace = true
+scsv-asset.workspace = true
+scsv-wallet.workspace = true
+scsv-transport.workspace = true
+scsv-testkit.workspace = true
+proptest.workspace = true

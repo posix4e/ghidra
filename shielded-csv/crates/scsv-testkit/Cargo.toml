@@ -1,0 +1,17 @@
+[package]
+name = "scsv-testkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+scsv-core.workspace = true
+scsv-air.workspace = true
+scsv-chain.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

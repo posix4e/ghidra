@@ -1,0 +1,19 @@
+[package]
+name = "scsv-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+p3-field.workspace = true
+p3-baby-bear.workspace = true
+p3-poseidon2.workspace = true
+p3-symmetric.workspace = true
+thiserror.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
