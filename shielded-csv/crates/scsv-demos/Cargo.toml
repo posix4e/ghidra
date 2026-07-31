@@ -9,12 +9,15 @@ publish = false
 
 [dependencies]
 scsv-core.workspace = true
-
-[dev-dependencies]
-scsv-air.workspace = true
 scsv-chain.workspace = true
 scsv-asset.workspace = true
 scsv-wallet.workspace = true
+p3-field.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+scsv-air.workspace = true
+scsv-native-crypto.workspace = true
 scsv-transport.workspace = true
 scsv-testkit.workspace = true
 proptest.workspace = true

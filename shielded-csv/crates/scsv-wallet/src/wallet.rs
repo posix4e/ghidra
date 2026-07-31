@@ -6,10 +6,12 @@
 //! off-chain in a `CoinBundle`. There is no seed recovery: the wallet directory
 //! is the only backup.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use scsv_air::transfer::{prove_transfer, Slot};
-use scsv_asset::evidence::MemoryEvidence;
+use scsv_asset::evidence::{BurnProof, FreezeDelta, MemoryEvidence, SeizeEvidence};
+use scsv_asset::view::canonical_frozen_tree;
+use scsv_asset::{audit_supply, AssetReport};
 use scsv_chain::records::{Record, RecordBody, SignedRecord};
 use scsv_chain::wire::Payload;
 use scsv_chain::{BitcoindChain, ChainError, PublicationChain};
@@ -21,7 +23,7 @@ use crate::account::{Account, AddressSecret, ShareableAddress};
 use crate::hop::{
     essence_tx_hash, CoinBundle, Loc, OutputEssence, WireCoin, WireHop, WireNullifier,
 };
-use crate::receive::{verify_bundle, RejectReason};
+use crate::receive::{verify_bundle, verify_bundle_with_evidence, RejectReason};
 
 #[derive(Debug, thiserror::Error)]
 pub enum WalletError {
@@ -33,6 +35,10 @@ pub enum WalletError {
     AlreadySpent,
     #[error("insufficient coin value")]
     Insufficient,
+    #[error("coin belongs to a different asset")]
+    WrongAsset,
+    #[error("coin handle is not in the frozen set")]
+    NotFrozen,
     #[error("published transaction did not confirm")]
     Unconfirmed,
     #[error("chain: {0}")]
@@ -63,7 +69,14 @@ pub struct IssuerState {
     pub last_hash: Digest,
     pub seq: u64,
     pub supply: u64,
+    /// The canonical frozen-handle set the issuer maintains (mirrors what the
+    /// auditor reconstructs from FREEZE-UPDATE records + deltas).
+    pub frozen: BTreeSet<[u8; 32]>,
+    /// Off-chain evidence the issuer serves: freeze deltas, burn proofs, and
+    /// seizure packs, keyed by the content hash their records commit to.
     pub evidence: MemoryEvidence,
+    /// The chain height the genesis was published at (audit fold floor).
+    pub genesis_height: u64,
 }
 
 #[derive(Clone)]
@@ -136,8 +149,9 @@ impl Wallet {
         let last_hash = rec.record_hash();
         let sig = bip340_sign(&kp, &rec.signing_message());
         let signed = SignedRecord { record: rec, sig };
-        chain.publish(&[Payload::Record(signed.to_bytes())])?;
+        let txid = chain.publish(&[Payload::Record(signed.to_bytes())])?;
         chain.mine(confirmations)?;
+        let genesis_height = chain.locate(&txid)?.ok_or(WalletError::Unconfirmed)?.height;
         let asset_id = genesis.asset_id();
         self.issuer = Some(IssuerState {
             kp,
@@ -145,7 +159,9 @@ impl Wallet {
             last_hash,
             seq: 0,
             supply: 0,
+            frozen: BTreeSet::new(),
             evidence: MemoryEvidence::new(),
+            genesis_height,
         });
         Ok(asset_id)
     }
@@ -367,8 +383,8 @@ impl Wallet {
         Ok(bundle)
     }
 
-    /// Verify an incoming bundle and, if its target is addressed to us, take
-    /// ownership of the coin. Returns the received coin.
+    /// Verify an incoming bundle (no freeze enforcement) and, if its target is
+    /// addressed to us, take ownership of the coin. Returns the received coin.
     pub fn receive(
         &mut self,
         chain: &BitcoindChain,
@@ -378,27 +394,236 @@ impl Wallet {
         let verified =
             verify_bundle(bundle, chain, confirmations).map_err(WalletError::Rejected)?;
         let coin = verified.coin;
+        self.take_ownership(coin, bundle.hops.clone());
+        Ok(coin)
+    }
+
+    /// As [`Self::receive`], but enforcing issuer freezes: a bundle that spends a
+    /// frozen coin (resolved through the issuer's off-chain `evidence`) is
+    /// rejected. Used for freezable assets (`spec/12-FREEZE.md`).
+    pub fn receive_with_evidence(
+        &mut self,
+        chain: &BitcoindChain,
+        bundle: &CoinBundle,
+        confirmations: u64,
+        evidence: &MemoryEvidence,
+    ) -> Result<WireCoin, WalletError> {
+        let verified = verify_bundle_with_evidence(bundle, chain, confirmations, evidence)
+            .map_err(WalletError::Rejected)?;
+        let coin = verified.coin;
+        self.take_ownership(coin, bundle.hops.clone());
+        Ok(coin)
+    }
+
+    fn take_ownership(&mut self, coin: WireCoin, ancestry: Vec<WireHop>) {
         if let Some(&nonce) = self.issued.get(&coin.addr) {
             if !self.coins.iter().any(|c| c.coin == coin) {
                 self.coins.push(OwnedCoin {
                     coin,
                     addr_nonce: nonce,
-                    ancestry: bundle.hops.clone(),
+                    ancestry,
                     spent: false,
                 });
             }
         }
-        Ok(coin)
     }
 
     fn maybe_own(&mut self, coin: WireCoin, ancestry: Vec<WireHop>) {
-        if let Some(&nonce) = self.issued.get(&coin.addr) {
-            self.coins.push(OwnedCoin {
-                coin,
-                addr_nonce: nonce,
-                ancestry,
-                spent: false,
-            });
+        self.take_ownership(coin, ancestry);
+    }
+
+    // ---- Issuer operations (`spec/09`–`spec/13`) ----------------------------
+
+    /// The issuer's asset id, if this wallet issued one.
+    pub fn asset_id(&self) -> Option<Digest> {
+        self.issuer.as_ref().map(|i| i.genesis.asset_id())
+    }
+
+    /// The issuer's off-chain evidence store (freeze deltas / burn / seize
+    /// packs), which receivers and auditors resolve hashes through.
+    pub fn evidence(&self) -> Option<&MemoryEvidence> {
+        self.issuer.as_ref().map(|i| &i.evidence)
+    }
+
+    /// Provably burn a coin the issuer holds: spend its nullifier and co-publish
+    /// a BURN record (S3), storing the burn proof off-chain so the audit counts
+    /// the reduction. Returns the burned amount.
+    pub fn burn(
+        &mut self,
+        chain: &BitcoindChain,
+        coin_index: usize,
+        confirmations: u64,
+    ) -> Result<u64, WalletError> {
+        let owned = self
+            .coins
+            .get(coin_index)
+            .ok_or(WalletError::NoSuchCoin)?
+            .clone();
+        if owned.spent {
+            return Err(WalletError::AlreadySpent);
         }
+        let asset = self
+            .issuer
+            .as_ref()
+            .ok_or(WalletError::NotIssuer)?
+            .genesis
+            .asset_id();
+        if owned.coin.asset_id != asset.to_bytes() {
+            return Err(WalletError::WrongAsset);
+        }
+        let amount = owned.coin.amount;
+        let coin_id = owned.coin.coin_id();
+        let input_id = coin_id;
+        // A burn transaction has no outputs; its essence binds the spent coin.
+        let tx_hash = essence_tx_hash(0, false, &owned.coin.asset_id, &[input_id], &[]);
+        let null_kp = self.account.address(owned.addr_nonce).null_kp;
+        let (nsig, _opening) = s2c_sign(&null_kp, &tx_hash, &self.chain_id);
+
+        let signed = {
+            let iss = self.issuer.as_mut().unwrap();
+            iss.supply -= amount;
+            let proof = BurnProof {
+                asset_id: asset,
+                amount,
+                coin_id,
+            };
+            let burn_proof_hash = iss.evidence.put_burn(&proof);
+            iss.seq += 1;
+            let rec = Record {
+                asset_id: asset,
+                seq: iss.seq,
+                prev_record_hash: iss.last_hash,
+                body: RecordBody::Burn {
+                    amount,
+                    cumulative_supply: iss.supply,
+                    nullifier_pk: nsig.pk,
+                    burn_proof_hash,
+                },
+            };
+            iss.last_hash = rec.record_hash();
+            let sig = bip340_sign(&iss.kp, &rec.signing_message());
+            SignedRecord { record: rec, sig }
+        };
+        chain.publish(&[Payload::Record(signed.to_bytes()), Payload::Nullifier(nsig)])?;
+        chain.mine(confirmations)?;
+        self.coins[coin_index].spent = true;
+        Ok(amount)
+    }
+
+    /// Add handles (coin ids) to the frozen set and publish a FREEZE-UPDATE,
+    /// storing the delta off-chain. Returns the new frozen root.
+    pub fn freeze(
+        &mut self,
+        chain: &BitcoindChain,
+        add: &[Digest],
+        confirmations: u64,
+    ) -> Result<Digest, WalletError> {
+        self.freeze_update(chain, add, &[], confirmations)
+    }
+
+    /// Remove handles from the frozen set and publish a FREEZE-UPDATE.
+    pub fn unfreeze(
+        &mut self,
+        chain: &BitcoindChain,
+        remove: &[Digest],
+        confirmations: u64,
+    ) -> Result<Digest, WalletError> {
+        self.freeze_update(chain, &[], remove, confirmations)
+    }
+
+    fn freeze_update(
+        &mut self,
+        chain: &BitcoindChain,
+        add: &[Digest],
+        remove: &[Digest],
+        confirmations: u64,
+    ) -> Result<Digest, WalletError> {
+        let (signed, new_root) = {
+            let iss = self.issuer.as_mut().ok_or(WalletError::NotIssuer)?;
+            for h in remove {
+                iss.frozen.remove(&h.to_bytes());
+            }
+            for h in add {
+                iss.frozen.insert(h.to_bytes());
+            }
+            let new_frozen_root = canonical_frozen_tree(&iss.frozen).root();
+            let delta = FreezeDelta {
+                added: add.to_vec(),
+                removed: remove.to_vec(),
+            };
+            let delta_hash = iss.evidence.put_delta(&delta);
+            iss.seq += 1;
+            let rec = Record {
+                asset_id: iss.genesis.asset_id(),
+                seq: iss.seq,
+                prev_record_hash: iss.last_hash,
+                body: RecordBody::FreezeUpdate {
+                    new_frozen_root,
+                    delta_hash,
+                },
+            };
+            iss.last_hash = rec.record_hash();
+            let sig = bip340_sign(&iss.kp, &rec.signing_message());
+            (SignedRecord { record: rec, sig }, new_frozen_root)
+        };
+        chain.publish(&[Payload::Record(signed.to_bytes())])?;
+        chain.mine(confirmations)?;
+        Ok(new_root)
+    }
+
+    /// Seize a frozen coin: publish a SEIZE record (valid only for a handle
+    /// already in the frozen set) with an evidence pack, reducing supply.
+    pub fn seize(
+        &mut self,
+        chain: &BitcoindChain,
+        coin_id: Digest,
+        amount: u64,
+        confirmations: u64,
+    ) -> Result<(), WalletError> {
+        let signed = {
+            let iss = self.issuer.as_mut().ok_or(WalletError::NotIssuer)?;
+            if !iss.frozen.contains(&coin_id.to_bytes()) {
+                return Err(WalletError::NotFrozen);
+            }
+            iss.supply -= amount;
+            let asset = iss.genesis.asset_id();
+            let ev = SeizeEvidence {
+                asset_id: asset,
+                amount,
+                coin_id,
+            };
+            let evidence_pack_hash = iss.evidence.put_seize(&ev);
+            iss.seq += 1;
+            let rec = Record {
+                asset_id: asset,
+                seq: iss.seq,
+                prev_record_hash: iss.last_hash,
+                body: RecordBody::Seize {
+                    coin_id,
+                    amount,
+                    cumulative_supply: iss.supply,
+                    evidence_pack_hash,
+                },
+            };
+            iss.last_hash = rec.record_hash();
+            let sig = bip340_sign(&iss.kp, &rec.signing_message());
+            SignedRecord { record: rec, sig }
+        };
+        chain.publish(&[Payload::Record(signed.to_bytes())])?;
+        chain.mine(confirmations)?;
+        Ok(())
+    }
+
+    /// Audit the issuer's own asset from the chain, resolving evidence through
+    /// the issuer's store. A pure chain scan — the same computation any third
+    /// party can run, here seeded with the evidence the issuer serves.
+    pub fn audit(&self, chain: &BitcoindChain) -> Result<AssetReport, WalletError> {
+        let iss = self.issuer.as_ref().ok_or(WalletError::NotIssuer)?;
+        let reports = audit_supply(chain, &iss.evidence, iss.genesis_height, None)?;
+        let asset = iss.genesis.asset_id();
+        reports
+            .into_iter()
+            .find(|r| r.asset_id == asset)
+            .ok_or(WalletError::NotIssuer)
     }
 }

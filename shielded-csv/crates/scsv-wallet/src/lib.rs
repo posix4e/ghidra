@@ -14,5 +14,5 @@ pub mod wallet;
 
 pub use account::{Account, AddressSecret, ShareableAddress};
 pub use hop::{CoinBundle, Loc, WireCoin, WireHop, WireNullifier};
-pub use receive::{verify_bundle, RejectReason, VerifiedCoin};
+pub use receive::{verify_bundle, verify_bundle_with_evidence, RejectReason, VerifiedCoin};
 pub use wallet::{IssuerState, OwnedCoin, Wallet, WalletError};

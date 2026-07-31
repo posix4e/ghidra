@@ -1304,11 +1304,14 @@ dependencies = [
 name = "scsv-demos"
 version = "0.1.0"
 dependencies = [
+ "hex",
+ "p3-field",
  "proptest",
  "scsv-air",
  "scsv-asset",
  "scsv-chain",
  "scsv-core",
+ "scsv-native-crypto",
  "scsv-testkit",
  "scsv-transport",
  "scsv-wallet",
