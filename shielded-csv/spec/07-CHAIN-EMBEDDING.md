@@ -10,12 +10,17 @@ node — there is no mock and no fallback.
 
 ## Payloads
 
-Each published Bitcoin transaction carries one or more payloads, tagged with the
-4-byte magic `SCSV`, a version byte, and a kind byte:
+Each published Bitcoin transaction carries a **bundle** of one or more payloads
+inside a single OP_RETURN output (a `count` then length-framed payloads); each
+payload is tagged with the 4-byte magic `SCSV`, a version byte, and a kind byte:
 
 - **Nullifier** payloads (`06-NULLIFIERS`).
 - **Record** payloads (spec 08), which for mints/burns MUST share the same
-  Bitcoin transaction as the nullifier they bind to (soundness item S3).
+  Bitcoin transaction as the nullifier they bind to (soundness item S3) — a
+  single-output bundle satisfies this trivially.
+
+One output rather than several also sidesteps Bitcoin Core's refusal to build a
+transaction with multiple `data` outputs via `createrawtransaction`.
 
 Nullifier and typical record payloads exceed Bitcoin's default 80-byte
 OP_RETURN standardness limit, so the node is run with an explicit larger

@@ -6,4 +6,7 @@
 //! skip path; a missing `bitcoind` is a hard panic pointing at
 //! `ci/install-bitcoind.sh`.
 
+pub mod regtest;
 pub mod spec_lint;
+
+pub use regtest::{shared_node, RegtestNode};

@@ -7,6 +7,6 @@
 pub mod bip340;
 
 pub use bip340::{
-    bip340_verify, nullifier_message, s2c_sign, s2c_verify, tagged_hash, NullifierKeypair,
-    NullifierSig, S2cOpening, XOnlyBytes,
+    bip340_sign, bip340_verify, nullifier_message, s2c_sign, s2c_verify, tagged_hash,
+    NullifierKeypair, NullifierSig, S2cOpening, XOnlyBytes,
 };

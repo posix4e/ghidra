@@ -1177,6 +1177,7 @@ dependencies = [
  "proptest",
  "scsv-core",
  "scsv-native-crypto",
+ "scsv-testkit",
  "serde",
  "serde_json",
  "thiserror",
@@ -1244,6 +1245,8 @@ dependencies = [
  "scsv-air",
  "scsv-chain",
  "scsv-core",
+ "scsv-native-crypto",
+ "serde_json",
  "thiserror",
 ]
 

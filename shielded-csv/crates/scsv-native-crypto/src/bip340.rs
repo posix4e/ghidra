@@ -195,6 +195,37 @@ pub fn s2c_sign_counted(
     unreachable!("counter space exhausted")
 }
 
+/// Plain BIP340 signature over an arbitrary 32-byte message with a
+/// deterministic nonce. Used by issuers to sign records — never for
+/// nullifiers, whose nonces must carry the sign-to-contract tweak.
+pub fn bip340_sign(kp: &NullifierKeypair, msg32: &[u8; 32]) -> [u8; 64] {
+    let sk_bytes: [u8; 32] = kp.sk.to_bytes().into();
+    for ctr in 0u32.. {
+        let k0 = scalar_from_hash(tagged_hash(
+            "SCSV/plain-nonce",
+            &[&sk_bytes, msg32, &ctr.to_le_bytes()],
+        ));
+        if k0 == Scalar::ZERO {
+            continue;
+        }
+        let r_point = (ProjectivePoint::GENERATOR * k0).to_affine();
+        // Plain BIP340 may negate the nonce on odd Y — no opening to preserve.
+        let k = if bool::from(r_point.y_is_odd()) {
+            -k0
+        } else {
+            k0
+        };
+        let rx = x_bytes(&r_point);
+        let e = challenge(&rx, &kp.pk, msg32);
+        let s = k + e * kp.sk;
+        let mut sig = [0u8; 64];
+        sig[..32].copy_from_slice(&rx);
+        sig[32..].copy_from_slice(&s.to_bytes());
+        return sig;
+    }
+    unreachable!()
+}
+
 /// Standard BIP340 verification of `sig` over `msg32` by x-only `pk`.
 pub fn bip340_verify(pk: &XOnlyBytes, msg32: &[u8; 32], sig: &[u8; 64]) -> bool {
     let Some(p) = lift_x(pk) else { return false };
