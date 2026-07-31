@@ -1162,10 +1162,12 @@ dependencies = [
 name = "scsv-asset"
 version = "0.1.0"
 dependencies = [
+ "p3-field",
  "proptest",
  "scsv-chain",
  "scsv-core",
  "scsv-native-crypto",
+ "scsv-testkit",
  "thiserror",
 ]
 

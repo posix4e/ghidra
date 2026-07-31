@@ -11,7 +11,9 @@ publish = false
 scsv-core.workspace = true
 scsv-chain.workspace = true
 scsv-native-crypto.workspace = true
+p3-field.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+scsv-testkit.workspace = true
